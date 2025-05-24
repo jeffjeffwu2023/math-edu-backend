@@ -1,7 +1,9 @@
 # routes/students.py
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from models.student import Student
 from motor.motor_asyncio import AsyncIOMotorClient
+from jose import JWTError, jwt
+from fastapi.security import OAuth2PasswordBearer
 import os
 from dotenv import load_dotenv
 from datetime import datetime
@@ -13,7 +15,26 @@ db = client["math_edu_db"]
 
 router = APIRouter()
 
-@router.get("/")
+# JWT settings
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")
+ALGORITHM = "HS256"
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        role: str = payload.get("role")
+        if user_id is None or role is None:
+            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+        user = await db.users.find_one({"id": user_id}, {"_id": 0})
+        if user is None:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
+@router.get("/", dependencies=[Depends(get_current_user)])
 async def get_students():
     try:
         students = []
@@ -24,7 +45,7 @@ async def get_students():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(get_current_user)])
 async def add_student(student: Student):
     try:
         student_dict = student.dict()
@@ -35,7 +56,7 @@ async def add_student(student: Student):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.put("/{id}")
+@router.put("/{id}", dependencies=[Depends(get_current_user)])
 async def update_student(id: str, student: Student):
     try:
         student_dict = student.dict()
@@ -46,7 +67,7 @@ async def update_student(id: str, student: Student):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(get_current_user)])
 async def delete_student(id: str):
     try:
         result = await db.students.delete_one({"id": id})
@@ -56,7 +77,7 @@ async def delete_student(id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{id}/performance")
+@router.get("/{id}/performance", dependencies=[Depends(get_current_user)])
 async def get_student_performance(id: str):
     try:
         answers = []
@@ -67,7 +88,7 @@ async def get_student_performance(id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/performance-metrics")
+@router.post("/performance-metrics", dependencies=[Depends(get_current_user)])
 async def compute_performance_metrics(data: dict):
     try:
         answers = data.get("answers", [])
@@ -92,7 +113,7 @@ async def compute_performance_metrics(data: dict):
             cb["accuracy"] = cb["correct"] / cb["totalQuestions"] if cb["totalQuestions"] > 0 else 0
         for difficulty in difficulty_breakdown:
             db = difficulty_breakdown[difficulty]
-            db["accuracy"] = db["correct"] / cb["totalQuestions"] if cb["totalQuestions"] > 0 else 0
+            db["accuracy"] = db["correct"] / db["totalQuestions"] if db["totalQuestions"] > 0 else 0
 
         return {
             "overallAccuracy": overall_accuracy,
@@ -102,7 +123,7 @@ async def compute_performance_metrics(data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/time-spent")
+@router.post("/time-spent", dependencies=[Depends(get_current_user)])
 async def compute_time_spent(data: dict):
     try:
         answers = data.get("answers", [])
