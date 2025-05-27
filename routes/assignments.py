@@ -1,7 +1,9 @@
-# routes/assignments.py
-from fastapi import APIRouter, HTTPException
-from models.assignment import Assignment
+from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
+from datetime import datetime
+from bson import ObjectId
+from .auth import get_current_user
 import os
 from dotenv import load_dotenv
 
@@ -9,39 +11,61 @@ load_dotenv()
 client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
 db = client["math_edu_db"]
 
-router = APIRouter()
+router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
-@router.get("/")
-async def get_assignments(student_id: str = None):
-    try:
-        query = {"studentId": student_id} if student_id else {}
-        assignments = []
-        async for assignment in db.assignments.find(query):
-            assignment.pop("_id", None)  # Remove MongoDB's _id field
-            assignments.append(assignment)
-        return assignments
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+class AssignmentCreate(BaseModel):
+  questionIndices: list[int]
+  studentId: str
 
 @router.post("/")
-async def assign_homework(assignment: Assignment):
-    try:
-        assignment_dict = assignment.dict()
-        existing_assignments = []
-        async for assignment in db.assignments.find({}, {"_id": 0}):
-            existing_assignments.append(assignment)
-        assignment_dict["id"] = max([a["id"] for a in existing_assignments], default=0) + 1
-        result = await db.assignments.insert_one(assignment_dict)
-        return {"message": "Assignment created", "id": str(result.inserted_id)}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+async def create_assignment(assignment: AssignmentCreate, current_user: dict = Depends(get_current_user)):
+  if current_user["role"] not in ["admin", "tutor"]:
+    raise HTTPException(403, "Only admins or tutors can create assignments")
+  user = await db.users.find_one({"id": assignment.studentId, "role": "student"})
+  if not user:
+    raise HTTPException(404, "Student not found")
+  if current_user["role"] == "tutor" and assignment.studentId not in current_user.get("studentIds", []):
+    raise HTTPException(403, "Tutor not assigned to this student")
+  assignment_dict = {
+    "id": str(ObjectId()),
+    "questionIndices": assignment.questionIndices,
+    "studentId": assignment.studentId,
+    "tutorId": current_user["id"],
+    "submitted": False,
+    "createdAt": datetime.utcnow()
+  }
+  await db.assignments.insert_one(assignment_dict)
+  return assignment_dict
 
-@router.put("/submit/{id}")
-async def submit_assignment(id: int):
-    try:
-        result = await db.assignments.update_one({"id": id}, {"$set": {"submitted": True}})
-        if result.matched_count == 0:
-            raise HTTPException(status_code=404, detail="Assignment not found")
-        return {"message": "Assignment submitted"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+@router.get("/")
+async def get_assignments(student_id: str = None, current_user: dict = Depends(get_current_user)):
+  if current_user["role"] not in ["admin", "tutor"] and current_user["id"] != student_id:
+    raise HTTPException(403, "Unauthorized access")
+  query = {"studentId": student_id} if student_id else {}
+  assignments = await db.assignments.find(query).to_list(None)
+  return [
+    {
+      "id": assignment["id"],
+      "questionIndices": assignment["questionIndices"],
+      "studentId": assignment["studentId"],
+      "tutorId": assignment.get("tutorId", ""),
+      "submitted": assignment["submitted"],
+      "createdAt": assignment["createdAt"]
+    }
+    for assignment in assignments
+  ]
+
+@router.put("/submit/{assignment_id}")
+async def submit_assignment(assignment_id: str, current_user: dict = Depends(get_current_user)):
+  if current_user["role"] != "student":
+    raise HTTPException(403, "Only students can submit assignments")
+  assignment = await db.assignments.find_one({"id": assignment_id})
+  if not assignment or assignment["studentId"] != current_user["id"]:
+    raise HTTPException(404, "Assignment not found or unauthorized")
+  result = await db.assignments.update_one(
+    {"id": assignment_id},
+    {"$set": {"submitted": True}}
+  )
+  if result.modified_count == 0:
+    raise HTTPException(400, "Failed to submit assignment")
+  return {"message": "Assignment submitted"}

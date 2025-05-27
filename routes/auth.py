@@ -1,58 +1,48 @@
 # routes/auth.py
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
-from passlib.context import CryptContext
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
 from motor.motor_asyncio import AsyncIOMotorClient
+from jose import JWTError, jwt
+import bcrypt
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
 db = client["math_edu_db"]
+JWT_SECRET = os.getenv("JWT_SECRET")
 
-router = APIRouter()
-
-# JWT settings
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")  # Replace with a secure key
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+router = APIRouter(prefix="/api/auth", tags=["auth"])
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 class LoginRequest(BaseModel):
     id: str
     password: str
 
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-async def get_user(user_id: str):
-    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+async def get_user_by_id(user_id: str):
+    user = await db.users.find_one({"id": user_id})
     return user
 
-
-@router.post("/login/")
+@router.post("/login")
 async def login(request: LoginRequest):
-    print(f"Login request: {request.id}")
-    user = await get_user(request.id)
-    print(f"User found: {user}")
-    if not user:
+    user = await get_user_by_id(request.id)
+    if not user or not bcrypt.checkpw(request.password.encode("utf-8"), user["password"].encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    print(f"Verifying password: {request.password} against {user['password']}")
+    
+    token = jwt.encode({"id": user["id"], "role": user["role"]}, JWT_SECRET, algorithm="HS256")
+    return {"access_token": token, "user": {"id": user["id"], "name": user["name"], "role": user["role"], "language": user["language"]}}
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
-        if not pwd_context.verify(request.password, user["password"]):
-            print("Password verification failed")
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-    except ValueError as e:
-        print(f"Password verification error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Password verification error: {str(e)}")
-    access_token = create_access_token(data={"sub": user["id"], "role": user["role"]})
-    print(f"Generated token: {access_token}")
-    return {"access_token": access_token, "token_type": "bearer", "user": user}
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        user_id = payload.get("id")
+        role = payload.get("role")
+        if not user_id or not role:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return {"id": user["id"], "role": user["role"], "name": user["name"], "language": user["language"]}
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")

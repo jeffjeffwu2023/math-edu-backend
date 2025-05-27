@@ -1,46 +1,51 @@
-# main.py
+
+import sys
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+from routes import questions, assignments, ai, answers, auth, users, classrooms, performance, categories, managers,knowledge_points 
 from dotenv import load_dotenv
-import os
+from motor.motor_asyncio import AsyncIOMotorClient
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv()
 
-app = FastAPI()
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
-)
-
-# MongoDB connection (async)
 client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
 db = client["math_edu_db"]
 
-# Include routes
-from routes import questions, students, assignments, ai, answers, auth
+async def init_db():
+  await db.users.create_index("id", unique=True)
+  await db.questions.create_index("index", unique=True)
+  await db.assignments.create_index("id", unique=True)
+  await db.classrooms.create_index("id", unique=True)
+  await db.categories.create_index("name", unique=True)
 
-app.include_router(questions.router, prefix="/api/questions")
-app.include_router(students.router, prefix="/api/students")
-app.include_router(assignments.router, prefix="/api/assignments")
-app.include_router(ai.router, prefix="/api/ai")
-app.include_router(answers.router, prefix="/api/answers")
-app.include_router(auth.router, prefix="/api/auth")
+app = FastAPI()
+
+app.add_middleware(
+  CORSMiddleware,
+  allow_origins=["http://localhost:3000"],
+  allow_credentials=True,
+  allow_methods=["*"],
+  allow_headers=["*"],
+)
+
+app.include_router(questions.router)
+app.include_router(users.router)
+app.include_router(assignments.router)
+app.include_router(ai.router)
+app.include_router(answers.router)
+app.include_router(auth.router)
+app.include_router(classrooms.router)
+app.include_router(performance.router)
+app.include_router(categories.router)
+app.include_router(managers.router)
+app.include_router(knowledge_points.router)
 
 @app.on_event("startup")
 async def startup_event():
-    print("MongoDB connected")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    client.close()
-    print("MongoDB connection closed")
+  await init_db()
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="::", port=8000)  # Bind to IPv6 (includes IPv4)
+  import uvicorn
+  uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
