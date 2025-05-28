@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 from typing import List
 from datetime import datetime
+from models.question import Question
 
 load_dotenv()
 client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
@@ -14,18 +15,11 @@ db = client["math_edu_db"]
 
 router = APIRouter(prefix="/api/questions", tags=["questions"])
 
-class Question(BaseModel):
-    title: str
-    content: str
-    category: str
-    difficulty: str
-    knowledgePoints: List[str]
-
 class QuestionResponse(BaseModel):
     index: int
     title: str
     content: str
-    category: str
+    category: str | None
     difficulty: str
     knowledgePoints: List[dict]
     createdAt: str
