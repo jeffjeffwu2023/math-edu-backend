@@ -25,7 +25,6 @@ class QuestionResponse(BaseModel):
     createdAt: str
     updatedAt: str
     isActive: bool
-    _id: str
 
 @router.post("/", response_model=QuestionResponse)
 async def add_question(question: Question):
@@ -49,9 +48,8 @@ async def add_question(question: Question):
     question_dict["isActive"] = True
 
     result = await db.questions.insert_one(question_dict)
-    question_dict["_id"] = str(result.inserted_id)
     question_dict["knowledgePoints"] = [
-        {"_id": str(p["_id"]), "grade": p["grade"], "strand": p["strand"], "topic": p["topic"], "skill": p["skill"], "subKnowledgePoint": p["subKnowledgePoint"]}
+        {"id": str(p["_id"]), "grade": p["grade"], "strand": p["strand"], "topic": p["topic"], "skill": p["skill"], "subKnowledgePoint": p["subKnowledgePoint"]}
         for p in valid_points
     ]
     return question_dict
@@ -60,12 +58,11 @@ async def add_question(question: Question):
 async def get_questions():
     questions = await db.questions.find({"isActive": True}).to_list(None)
     for question in questions:
-        question["_id"] = str(question["_id"])
         question["knowledgePoints"] = await db.knowledge_points.find(
             {"_id": {"$in": question["knowledgePoints"]}, "isActive": True}
         ).to_list(None)
         question["knowledgePoints"] = [
-            {"_id": str(p["_id"]), "grade": p["grade"], "strand": p["strand"], "topic": p["topic"], "skill": p["skill"], "subKnowledgePoint": p["subKnowledgePoint"]}
+            {"id": str(p["_id"]), "grade": p["grade"], "strand": p["strand"], "topic": p["topic"], "skill": p["skill"], "subKnowledgePoint": p["subKnowledgePoint"]}
             for p in question["knowledgePoints"]
         ]
     return questions

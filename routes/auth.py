@@ -27,7 +27,7 @@ class LoginRequest(BaseModel):
 
 async def get_user_by_id(user_id: str):
     logger.info(f"Fetching user with name: {user_id}")
-    user = await db.users.find_one({"name": user_id})
+    user = await db.users.find_one({"id": user_id})
     if user:
         logger.info(f"User found: {user['id']}, role: {user['role']}")
     else:
@@ -48,7 +48,7 @@ async def login(request: LoginRequest):
     
     logger.info(f"Login successful for user: {request.id}")
     token = jwt.encode({"id": user["id"], "role": user["role"]}, JWT_SECRET, algorithm="HS256")
-    return {"access_token": token, "user": {"id": user["id"], "name": user["name"], "role": user["role"], "language": user["language"]}}
+    return {"access_token": token, "user": {"id": user["id"], "name": user["name"], "role": user["role"], "language": user["language"], "tutorId": user["tutorId"], "studentIds": user["studentIds"], "classroomIds": user["classroomIds"]}}
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     try:

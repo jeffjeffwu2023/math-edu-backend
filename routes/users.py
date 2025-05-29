@@ -5,6 +5,13 @@ from bcrypt import hashpw, gensalt
 import os
 from dotenv import load_dotenv
 from .auth import get_current_user
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
 
 load_dotenv()
 client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
@@ -50,6 +57,28 @@ async def get_users(current_user: dict = Depends(get_current_user)):
     }
     for user in users
   ]
+
+@router.get("/children/pid={parent_id}")
+async def get_children_by_parent(parent_id: str, current_user: dict = Depends(get_current_user)):
+  logger.error(f"current_user: {current_user}")
+
+  if current_user["role"] not in ["parent"]:
+    raise HTTPException(status_code=403, detail="Unauthorized access")
+  
+  children = []
+  if "studentIds" in current_user and current_user["studentIds"]:
+    children = await db.users.find({"id": {"$in": current_user["studentIds"]}, "role": "student"}).to_list(None)
+
+  return [
+    {
+      "id": child["id"],
+      "name": child["name"],
+      "email": child["email"],
+      "language": child["language"]
+    }
+    for child in children
+  ]
+
 
 @router.post("/")
 async def add_user(user: UserCreate, current_user: dict = Depends(get_current_user)):
