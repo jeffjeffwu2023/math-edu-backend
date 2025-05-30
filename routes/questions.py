@@ -2,12 +2,12 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
-from bson import ObjectId
 import os
 from dotenv import load_dotenv
 from typing import List
 from datetime import datetime
 from models.question import Question
+import uuid
 
 load_dotenv()
 client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
@@ -16,7 +16,7 @@ db = client["math_edu_db"]
 router = APIRouter(prefix="/api/questions", tags=["questions"])
 
 class QuestionResponse(BaseModel):
-    index: int
+    id: str
     title: str
     content: str
     category: str | None
@@ -29,27 +29,29 @@ class QuestionResponse(BaseModel):
 @router.post("/", response_model=QuestionResponse)
 async def add_question(question: Question):
     # Validate knowledge point IDs
-    try:
-        knowledge_point_ids = [ObjectId(kp_id) for kp_id in question.knowledgePoints]
-    except:
-        raise HTTPException(400, "Invalid knowledge point IDs")
-    
     valid_points = await db.knowledge_points.find(
-        {"_id": {"$in": knowledge_point_ids}, "isActive": True}
+        {"id": {"$in": question.knowledgePoints}, "isActive": True}
     ).to_list(None)
-    if len(valid_points) != len(knowledge_point_ids):
+    if len(valid_points) != len(question.knowledgePoints):
         raise HTTPException(400, "Some knowledge point IDs are invalid or inactive")
 
-    question_dict = question.dict()
-    question_dict["index"] = await db.questions.count_documents({}) + 1
-    question_dict["knowledgePoints"] = knowledge_point_ids
+    question_dict = question.dict(exclude={"id"})
+    question_dict["id"] = str(uuid.uuid4())
+    question_dict["knowledgePoints"] = question.knowledgePoints  # Store UUIDs
     question_dict["createdAt"] = datetime.utcnow().isoformat()
     question_dict["updatedAt"] = datetime.utcnow().isoformat()
     question_dict["isActive"] = True
 
-    result = await db.questions.insert_one(question_dict)
+    await db.questions.insert_one(question_dict)
     question_dict["knowledgePoints"] = [
-        {"id": str(p["_id"]), "grade": p["grade"], "strand": p["strand"], "topic": p["topic"], "skill": p["skill"], "subKnowledgePoint": p["subKnowledgePoint"]}
+        {
+            "id": p["id"],
+            "grade": p["grade"],
+            "strand": p["strand"],
+            "topic": p["topic"],
+            "skill": p["skill"],
+            "subKnowledgePoint": p["subKnowledgePoint"]
+        }
         for p in valid_points
     ]
     return question_dict
@@ -59,10 +61,17 @@ async def get_questions():
     questions = await db.questions.find({"isActive": True}).to_list(None)
     for question in questions:
         question["knowledgePoints"] = await db.knowledge_points.find(
-            {"_id": {"$in": question["knowledgePoints"]}, "isActive": True}
+            {"id": {"$in": question["knowledgePoints"]}, "isActive": True}
         ).to_list(None)
         question["knowledgePoints"] = [
-            {"id": str(p["_id"]), "grade": p["grade"], "strand": p["strand"], "topic": p["topic"], "skill": p["skill"], "subKnowledgePoint": p["subKnowledgePoint"]}
+            {
+                "id": p["id"],
+                "grade": p["grade"],
+                "strand": p["strand"],
+                "topic": p["topic"],
+                "skill": p["skill"],
+                "subKnowledgePoint": p["subKnowledgePoint"]
+            }
             for p in question["knowledgePoints"]
         ]
     return questions

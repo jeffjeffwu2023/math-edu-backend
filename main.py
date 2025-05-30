@@ -1,9 +1,9 @@
-# main.py
+
 import sys
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import questions, assignments, ai, answers, auth, users, classrooms, performance, managers, knowledge_points
+from routes import questions, assignments, ai, answers, auth, users, classrooms, performance, managers,knowledge_points 
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -14,19 +14,18 @@ client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
 db = client["math_edu_db"]
 
 async def init_db():
-    await db.users.create_index("id", unique=True)
-    await db.questions.create_index("index", unique=True)
-    await db.assignments.create_index("id", unique=True)
-    await db.classrooms.create_index("id", unique=True)
+  await db.users.create_index("id", unique=True)
+  await db.assignments.create_index("id", unique=True)
+  await db.classrooms.create_index("id", unique=True)
 
 app = FastAPI()
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+  CORSMiddleware,
+  allow_origins=["http://localhost:3000"],
+  allow_credentials=True,
+  allow_methods=["*"],
+  allow_headers=["*"],
 )
 
 app.include_router(questions.router)
@@ -42,8 +41,8 @@ app.include_router(knowledge_points.router)
 
 @app.on_event("startup")
 async def startup_event():
-    await init_db()
+  await init_db()
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+  import uvicorn
+  uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

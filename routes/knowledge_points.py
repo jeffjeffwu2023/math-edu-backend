@@ -36,7 +36,7 @@ async def get_knowledge_points(
         raise HTTPException(404, "No knowledge points found")
     return [
         {
-            "id": str(p["_id"]),
+            "id": str(p["id"]),
             "grade": p["grade"],
             "strand": p["strand"],
             "topic": p["topic"],

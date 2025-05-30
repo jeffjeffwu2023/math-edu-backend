@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/answers", tags=["answers"])
 class Answer(BaseModel):
     id: str | None = None
     studentId: str
-    questionIndex: int
+    questionId: str
     answer: str
     isCorrect: bool
     timestamp: str
@@ -26,6 +26,10 @@ class Answer(BaseModel):
 async def add_answer(answer: Answer, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "student" or current_user["id"] != answer.studentId:
         raise HTTPException(403, "Only students can submit their own answers")
+    # Validate questionId
+    question = await db.questions.find_one({"id": answer.questionId})
+    if not question:
+        raise HTTPException(404, "Question not found")
     answer_dict = answer.dict(exclude={"id"})
     answer_dict["id"] = str(ObjectId())
     answer_dict["createdAt"] = datetime.utcnow()
@@ -56,7 +60,7 @@ async def get_answers(student_id: str, current_user: dict = Depends(get_current_
         {
             "id": answer["id"],
             "studentId": answer["studentId"],
-            "questionIndex": answer["questionIndex"],
+            "questionId": answer["questionId"],
             "answer": answer["answer"],
             "isCorrect": answer["isCorrect"],
             "timestamp": answer["timestamp"],

@@ -4,6 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
 from jose import JWTError, jwt
+from passlib.context import CryptContext  # Add this import
 import bcrypt
 import os
 from dotenv import load_dotenv
@@ -12,6 +13,8 @@ import logging
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 load_dotenv()
 client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
@@ -22,7 +25,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 class LoginRequest(BaseModel):
-    id: str
+    email: str
     password: str
 
 async def get_user_by_id(user_id: str):
@@ -34,25 +37,39 @@ async def get_user_by_id(user_id: str):
         logger.warning(f"User not found for name: {user_id}")
     return user
 
-@router.post("/login")
+@router.post("/login/")
 async def login(request: LoginRequest):
-    logger.info(f"Login attempt for user: {request.id}")
-    user = await get_user_by_id(request.id)
-    if not user:
-        logger.error(f"Invalid credentials: User {request.id} not found")
+    user = await db.users.find_one({"email": request.email})
+    
+    if not user or not pwd_context.verify(request.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    if not bcrypt.checkpw(request.password.encode("utf-8"), user["password"].encode("utf-8")):
-        logger.error(f"Invalid credentials: Password mismatch for user {request.id}")
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    # Check for math-related roles
+    math_roles = ["student", "tutor", "admin"]
+    if user["role"] not in math_roles:
+        raise HTTPException(status_code=403, detail="User does not have a math-related role")
     
-    logger.info(f"Login successful for user: {request.id}")
-    token = jwt.encode({"id": user["id"], "role": user["role"]}, JWT_SECRET, algorithm="HS256")
-    return {"access_token": token, "user": {"id": user["id"], "name": user["name"], "role": user["role"], "language": user["language"], "tutorId": user["tutorId"], "studentIds": user["studentIds"], "classroomIds": user["classroomIds"]}}
+    # Generate JWT token
+    token = jwt.encode({"id": user["id"], "role": user["role"]}, os.getenv("JWT_SECRET"), algorithm="HS256")
+    return {
+        "access_token": token,
+        "user": {
+            "id": user["id"],
+            "role": user["role"],
+            "name": user["name"],
+            "email": user["email"]
+        }
+    }
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
+        logger.error(f"Decoding token: {token}")
+
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+
+        logger.error(f"payload: {payload}")
+
+
         user_id = payload.get("id")
         role = payload.get("role")
         if not user_id or not role:

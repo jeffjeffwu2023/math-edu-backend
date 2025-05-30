@@ -4,9 +4,10 @@ from datetime import datetime
 from typing import List, Optional
 
 class Question(BaseModel):
+    id: Optional[str] = None  # UUID as string
     title: str
     content: str
     difficulty: str = "easy"
-    category: Optional[str] = None  # Optional, as categories are removed
-    knowledgePoints: List[str] = []  # List of knowledge point ObjectId strings
+    category: Optional[str] = None
+    knowledgePoints: List[str] = []  # List of knowledge point UUID strings
     createdAt: datetime = datetime.utcnow()
