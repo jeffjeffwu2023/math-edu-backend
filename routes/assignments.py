@@ -15,31 +15,57 @@ router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
 class AssignmentCreate(BaseModel):
     questionIds: list[str]
-    studentId: str
+    studentIds: list[str]
 
 @router.post("/")
 async def create_assignment(assignment: AssignmentCreate, current_user: dict = Depends(get_current_user)):
     if current_user["role"] not in ["admin", "tutor"]:
         raise HTTPException(403, "Only admins or tutors can create assignments")
-    user = await db.users.find_one({"id": assignment.studentId, "role": "student"})
-    if not user:
-        raise HTTPException(404, "Student not found")
-    if current_user["role"] == "tutor" and assignment.studentId not in current_user.get("studentIds", []):
-        raise HTTPException(403, "Tutor not assigned to this student")
-    # Validate questionIds
+    
+    # Validate question IDs
     valid_questions = await db.questions.find({"id": {"$in": assignment.questionIds}}).to_list(None)
     if len(valid_questions) != len(assignment.questionIds):
         raise HTTPException(400, "Some question IDs are invalid")
-    assignment_dict = {
-        "id": str(ObjectId()),
-        "questionIds": assignment.questionIds,
-        "studentId": assignment.studentId,
-        "tutorId": current_user["id"],
-        "submitted": False,
-        "createdAt": datetime.utcnow()
+    
+    # Fetch tutor's students if tutor
+    if current_user["role"] == "tutor":
+        tutor_students = await db.users.find(
+            {"role": "student", "tutorId": current_user["id"]}
+        ).to_list(None)
+        tutor_student_ids = {student["id"] for student in tutor_students}
+        # Verify all studentIds belong to the tutor
+        invalid_student_ids = set(assignment.studentIds) - tutor_student_ids
+        if invalid_student_ids:
+            raise HTTPException(
+                403, f"Students not assigned to this tutor: {invalid_student_ids}"
+            )
+    
+    # Validate student IDs exist
+    valid_students = await db.users.find(
+        {"id": {"$in": assignment.studentIds}, "role": "student"}
+    ).to_list(None)
+    if len(valid_students) != len(assignment.studentIds):
+        invalid_ids = set(assignment.studentIds) - {s["id"] for s in valid_students}
+        raise HTTPException(404, f"Students not found: {invalid_ids}")
+    
+    # Create assignments for each student
+    created_assignments = []
+    for student_id in assignment.studentIds:
+        assignment_dict = {
+            "id": str(ObjectId()),
+            "questionIds": assignment.questionIds,
+            "studentId": student_id,
+            "tutorId": current_user["id"],
+            "submitted": False,
+            "createdAt": datetime.utcnow()
+        }
+        await db.assignments.insert_one(assignment_dict)
+        created_assignments.append(assignment_dict["id"])
+    
+    return {
+        "message": "Assignments created successfully",
+        "assignmentIds": created_assignments
     }
-    await db.assignments.insert_one(assignment_dict)
-    return assignment_dict
 
 @router.get("/")
 async def get_assignments(student_id: str = None, current_user: dict = Depends(get_current_user)):
@@ -50,7 +76,7 @@ async def get_assignments(student_id: str = None, current_user: dict = Depends(g
     return [
         {
             "id": assignment["id"],
-            "questionIds": assignment["questionIds"],
+            "questionIds": assignment.get("questionIds", []),  # Default to empty list
             "studentId": assignment["studentId"],
             "tutorId": assignment.get("tutorId", ""),
             "submitted": assignment["submitted"],

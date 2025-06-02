@@ -63,7 +63,7 @@ async def login(request: LoginRequest):
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
-        logger.error(f"Decoding token: {token}")
+        logger.info(f"Decoding token: {token}")
 
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
 

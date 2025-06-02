@@ -40,6 +40,7 @@ class UserUpdate(BaseModel):
 
 VALID_ROLES = {"student", "parent", "tutor", "manager", "admin"}
 
+
 @router.get("/")
 async def get_users(role: str = None, current_user: dict = Depends(get_current_user)):
     
@@ -49,6 +50,34 @@ async def get_users(role: str = None, current_user: dict = Depends(get_current_u
     
     # Build query
     query = {"role": role} if role else {}
+    
+    users = await db.users.find(query).to_list(None)
+    return [
+        {
+            "id": user["id"],
+            "name": user["name"],
+            "email": user["email"],
+            "role": user["role"],
+            "language": user["language"],
+            "tutorId": user.get("tutorId"),
+            "studentIds": user.get("studentIds", []),
+            "classroomIds": user.get("classroomIds", [])
+        }
+        for user in users
+    ]
+
+
+@router.get("/bytutor/{tutor_id}")
+async def get_users_by_tutor(tutor_id: str, current_user: dict = Depends(get_current_user)):
+    logger.info(f"Fetching users for tutor_id: {tutor_id}, current_user: {current_user}") 
+    
+    # Validate role parameter
+    if current_user["role"] not in ["tutor"]:
+        raise HTTPException(status_code=403, detail="Unauthorized access")
+    
+    # Build query
+
+    query = {"tutorId": tutor_id}
     
     users = await db.users.find(query).to_list(None)
     return [

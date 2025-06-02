@@ -20,7 +20,7 @@ class Answer(BaseModel):
     questionId: str
     answer: str
     isCorrect: bool
-    timestamp: str
+    createdAt: str
 
 @router.post("/")
 async def add_answer(answer: Answer, current_user: dict = Depends(get_current_user)):
@@ -62,8 +62,9 @@ async def get_answers(student_id: str, current_user: dict = Depends(get_current_
             "studentId": answer["studentId"],
             "questionId": answer["questionId"],
             "answer": answer["answer"],
+            "category": answer["category"],
+            "difficulty": answer["difficulty"],
             "isCorrect": answer["isCorrect"],
-            "timestamp": answer["timestamp"],
             "createdAt": answer["createdAt"]
         }
         for answer in answers
