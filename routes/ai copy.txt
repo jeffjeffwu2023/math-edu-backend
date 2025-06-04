@@ -41,21 +41,32 @@ async def evaluate_answer(request: PromptRequest):
 async def call_grok(request: PromptRequest):
     try:
 
+#        async with httpx.AsyncClient() as client:
+#            response = await client.post(
+#                "https://api.x.ai/v1/chat/completions",
+#                json={
+#                    "model": "grok-3-latest",
+#                    "messages": [{"role": "user", "content": request.prompt}],
+#                    "stream": False,
+#                    "temperature": 0.7,
+#                    "max_tokens": 100
+#                },
+#                headers={"Authorization": f"Bearer {os.getenv('XAI_API_KEY')}"}
+#            )
+#            response.raise_for_status()
+#            logger.info(f"Grok API response: {response.json()}")
+
+
+        logger.info(f"Forwarding prompt to AI server: {request.prompt}")
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.x.ai/v1/chat/completions",
-                json={
-                    "model": "grok-3-latest",
-                    "messages": [{"role": "user", "content": request.prompt}],
-                    "stream": False,
-                    "temperature": 0.7,
-                    "max_tokens": 100
-                },
-                headers={"Authorization": f"Bearer {os.getenv('XAI_API_KEY')}"}
+                f"{os.getenv('AI_SERVER_URL', 'http://localhost:8080')}/v1/chat/completions",
+                json={"prompt": request.prompt},
+                timeout=30
             )
             response.raise_for_status()
-            logger.info(f"Grok API response: {response.json()}")
-
+            logger.info(f"AI server response: {response.json()}")
+       
 
             response_data = response.json()
             if "choices" not in response_data or not response_data["choices"]:
@@ -91,7 +102,7 @@ async def call_grok(request: PromptRequest):
 @router.post("/analyze-student/")
 async def analyze_student(student_data: dict, target_audience: str = "student", language: str = "en"):
     student_id = student_data["studentId"]
-    #language = "zh-CN"
+    language = "zh-CN"
     language_instruction = "Please respond in Chinese (Simplified)." if language == "zh-CN" else "Please respond in English."
     if target_audience == "parent":
         prompt = f"Generate a performance analysis for the parents of this student based on their answer history, category breakdown, difficulty breakdown, and time spent. Summarize their overall performance, highlight key strengths and areas for improvement in specific math categories and difficulty levels, and provide actionable advice for parents to support their child’s learning. Use a professional and supportive tone. {language_instruction}"
@@ -102,18 +113,29 @@ async def analyze_student(student_data: dict, target_audience: str = "student", 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:  # Add timeout
             print(f"Sending request to Grok API with student data: {student_data}")
+#            response = await client.post(
+#                "https://api.x.ai/v1/chat/completions",
+#                json={
+#                    "model": "grok-3-latest",
+#                    "messages": [
+#                        {"role": "user", "content": f"{prompt}\n\nStudent Data: {student_data}"}
+#                    ],
+#                    "stream": False,
+#                    "temperature": 0.7,
+#                },
+#                headers={"Authorization": f"Bearer {os.getenv('XAI_API_KEY')}"}
+#            )
+
+
+        logger.info(f"Forwarding prompt to AI server: {request.prompt}")
+        async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.x.ai/v1/chat/completions",
-                json={
-                    "model": "grok-3-latest",
-                    "messages": [
-                        {"role": "user", "content": f"{prompt}\n\nStudent Data: {student_data}"}
-                    ],
-                    "stream": False,
-                    "temperature": 0.7,
-                },
-                headers={"Authorization": f"Bearer {os.getenv('XAI_API_KEY')}"}
+                f"{os.getenv('AI_SERVER_URL', 'http://localhost:8080')}/v1/chat/completions",
+                json={"prompt": request.prompt},
+                timeout=30
             )
+            logger.info(f"AI server response: {response.json()}")
+
 
 
 
