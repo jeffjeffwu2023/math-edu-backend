@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
 from jose import JWTError, jwt
-from passlib.context import CryptContext  # Add this import
+from passlib.context import CryptContext
 import bcrypt
 import os
 from dotenv import load_dotenv
@@ -37,6 +37,25 @@ async def get_user_by_id(user_id: str):
         logger.warning(f"User not found for name: {user_id}")
     return user
 
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        logger.info(f"Decoding token: {token}")
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        logger.info(f"Payload: {payload}")  # Changed from error to info
+        user_id = payload.get("id")
+        role = payload.get("role")
+        if not user_id or not role:
+            logger.error("Invalid token: Missing user_id or role")
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await get_user_by_id(user_id)
+        if not user:
+            logger.error(f"User not found for id: {user_id}")
+            raise HTTPException(status_code=401, detail="User not found")
+        return {"id": user["id"], "role": user["role"], "name": user["name"], "language": user["language"]}
+    except JWTError as e:
+        logger.error(f"JWTError: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 @router.post("/login/")
 async def login(request: LoginRequest):
     user = await db.users.find_one({"email": request.email})
@@ -61,25 +80,11 @@ async def login(request: LoginRequest):
         }
     }
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    try:
-        logger.info(f"Decoding token: {token}")
-
-        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-
-        logger.error(f"payload: {payload}")
-
-
-        user_id = payload.get("id")
-        role = payload.get("role")
-        if not user_id or not role:
-            logger.error("Invalid token: Missing user_id or role")
-            raise HTTPException(status_code=401, detail="Invalid token")
-        user = await get_user_by_id(user_id)
-        if not user:
-            logger.error(f"User not found for id: {user_id}")
-            raise HTTPException(status_code=401, detail="User not found")
-        return {"id": user["id"], "role": user["role"], "name": user["name"], "language": user["language"]}
-    except JWTError as e:
-        logger.error(f"JWTError: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid token")
+@router.get("/current-user")
+async def get_current_user_endpoint(current_user: dict = Depends(get_current_user)):
+    return {
+        "id": current_user["id"],
+        "role": current_user["role"],
+        "name": current_user["name"],
+        "language": current_user["language"],
+    }

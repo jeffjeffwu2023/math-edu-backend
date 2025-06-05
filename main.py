@@ -3,7 +3,7 @@ import sys
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import questions, assignments, ai, answers, auth, users, classrooms, performance, managers, knowledge_points, courses, tutors, students
+from routes import ai_mistral,ai_grok, questions, assignments, answers, auth, users, classrooms, performance, managers, knowledge_points, courses, tutors, students
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -32,7 +32,8 @@ app.add_middleware(
 app.include_router(questions.router)
 app.include_router(users.router)
 app.include_router(assignments.router)
-app.include_router(ai.router)
+app.include_router(ai_grok.router)
+app.include_router(ai_mistral.router)
 app.include_router(answers.router)
 app.include_router(auth.router)
 app.include_router(classrooms.router)

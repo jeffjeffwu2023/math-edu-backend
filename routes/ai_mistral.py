@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 class PromptRequest(BaseModel):
     prompt: str
 
-@router.post("/mistral")
+@router.post("/mistral_evaluate")
 async def evaluate_answer(request: PromptRequest):
     logger.info(f"Forwarding prompt to AI server: {request.prompt}")
     async with httpx.AsyncClient() as client:
@@ -37,54 +37,36 @@ async def evaluate_answer(request: PromptRequest):
     
 
 
-@router.post("/grok")
-async def call_grok(request: PromptRequest):
+@router.post("/mistral")
+async def call_mistral(request: PromptRequest):
     try:
-
-#        async with httpx.AsyncClient() as client:
-#            response = await client.post(
-#                "https://api.x.ai/v1/chat/completions",
-#                json={
-#                    "model": "grok-3-latest",
-#                    "messages": [{"role": "user", "content": request.prompt}],
-#                    "stream": False,
-#                    "temperature": 0.7,
-#                    "max_tokens": 100
-#                },
-#                headers={"Authorization": f"Bearer {os.getenv('XAI_API_KEY')}"}
-#            )
-#            response.raise_for_status()
-#            logger.info(f"Grok API response: {response.json()}")
-
-
         logger.info(f"Forwarding prompt to AI server: {request.prompt}")
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{os.getenv('AI_SERVER_URL', 'http://localhost:8080')}/v1/chat/completions",
-                json={"prompt": request.prompt},
-                timeout=30
-            )
-            response.raise_for_status()
-            logger.info(f"AI server response: {response.json()}")
-       
-
-            response_data = response.json()
-            if "choices" not in response_data or not response_data["choices"]:
+            f"{os.getenv('AI_SERVER_URL', 'http://localhost:8080')}/v1/chat/completions",
+            json={"prompt": request.prompt},
+            timeout=30
+        )
+        response.raise_for_status()
+        logger.info(f"AI server response: {response.json()}")
+    
+        response_data = response.json()
+        if "choices" not in response_data or not response_data["choices"]:
                 logger.error("Grok API response missing 'choices' field")
                 raise ValueError("Grok API response missing 'choices' field")
             
-            choice = response_data["choices"][0]
-            if "message" in choice and "content" in choice["message"]:
-                answer = choice["message"]["content"]
-            elif "text" in choice:
-                answer = choice["text"]
-            elif "content" in choice:
-                answer = choice["content"]
-            else:
-                logger.error("Grok API response missing expected content field")
-                raise ValueError("Grok API response missing expected content field")
+        choice = response_data["choices"][0]
+        if "message" in choice and "content" in choice["message"]:
+            answer = choice["message"]["content"]
+        elif "text" in choice:
+            answer = choice["text"]
+        elif "content" in choice:
+            answer = choice["content"]
+        else:
+            logger.error("Grok API response missing expected content field")
+            raise ValueError("Grok API response missing expected content field")
 
-            return {"answer": answer}
+        return {"answer": answer}
     except httpx.HTTPStatusError as e:
         error_detail = e.response.json() if e.response.content else str(e)
         logger.error(f"Grok API HTTP error: {error_detail}")
@@ -102,42 +84,23 @@ async def call_grok(request: PromptRequest):
 @router.post("/analyze-student/")
 async def analyze_student(student_data: dict, target_audience: str = "student", language: str = "en"):
     student_id = student_data["studentId"]
-    language = "zh-CN"
+    #language = "zh-CN"
     language_instruction = "Please respond in Chinese (Simplified)." if language == "zh-CN" else "Please respond in English."
     if target_audience == "parent":
         prompt = f"Generate a performance analysis for the parents of this student based on their answer history, category breakdown, difficulty breakdown, and time spent. Summarize their overall performance, highlight key strengths and areas for improvement in specific math categories and difficulty levels, and provide actionable advice for parents to support their child’s learning. Use a professional and supportive tone. {language_instruction}"
     else:
         prompt = f"Analyze this student's math performance based on their answer history, category breakdown, difficulty breakdown, and time spent. Identify their weaknesses and strengths, focusing on specific math categories and difficulty levels. Provide actionable advice to improve their weaknesses. {language_instruction}"
-    student_data["prompt"] = prompt
+    #student_data["prompt"] = prompt
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:  # Add timeout
-            print(f"Sending request to Grok API with student data: {student_data}")
-#            response = await client.post(
-#                "https://api.x.ai/v1/chat/completions",
-#                json={
-#                    "model": "grok-3-latest",
-#                    "messages": [
-#                        {"role": "user", "content": f"{prompt}\n\nStudent Data: {student_data}"}
-#                    ],
-#                    "stream": False,
-#                    "temperature": 0.7,
-#                },
-#                headers={"Authorization": f"Bearer {os.getenv('XAI_API_KEY')}"}
-#            )
-
-
-        logger.info(f"Forwarding prompt to AI server: {request.prompt}")
-        async with httpx.AsyncClient() as client:
+        logger.info(f"Forwarding prompt to AI server: {student_data}")
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{os.getenv('AI_SERVER_URL', 'http://localhost:8080')}/v1/chat/completions",
-                json={"prompt": request.prompt},
+                json={"prompt": f"{prompt}\n\nStudent Data: {student_data}"},
                 timeout=30
             )
             logger.info(f"AI server response: {response.json()}")
-
-
-
 
             response.raise_for_status()
             analysis = response.json()["choices"][0]["message"]["content"]
