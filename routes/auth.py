@@ -58,6 +58,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 
 @router.post("/login/")
 async def login(request: LoginRequest):
+    logger.info(f"Login attempt for email: {request.email}")
+    logger.info(f"Password: {request.password}")  # Be cautious with logging passwords in production    
+    
     user = await db.users.find_one({"email": request.email})
     
     if not user or not pwd_context.verify(request.password, user["password"]):
