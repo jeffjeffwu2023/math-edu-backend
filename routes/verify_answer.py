@@ -27,6 +27,14 @@ async def verify_answer(request: VerifyAnswerRequest, current_user: dict = Depen
         # Check for equivalence
         is_correct = simplified_correct.equals(simplified_test)
 
+        # If they're numbers, round to a reasonable precision (e.g., 10 decimal places) to handle floating-point errors
+        if simplified_correct.is_number and simplified_test.is_number:
+            precision = 10
+            rounded_correct = round(float(simplified_correct), precision)
+            rounded_test = round(float(simplified_test), precision)
+            is_correct = rounded_correct == rounded_test
+
+
         return {
             "isCorrect": bool(is_correct),
             "expected": str(simplified_correct),

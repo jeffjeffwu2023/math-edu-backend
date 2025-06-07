@@ -3,7 +3,7 @@ import sys
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import verify_answer, ai_mistral,ai_grok, questions, assignments, answers, auth, users, classrooms, performance, managers, knowledge_points, courses, tutors, students
+from routes import verify_answer, question_generator, ai_mistral,ai_grok, questions, assignments, answers, auth, users, classrooms, performance, managers, knowledge_points, courses, tutors, students
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -45,6 +45,7 @@ app.include_router(tutors.router)
 app.include_router(users.router)
 app.include_router(students.router)
 app.include_router(verify_answer.router)
+app.include_router(question_generator.router)
 
 
 
