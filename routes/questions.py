@@ -22,6 +22,8 @@ class QuestionResponse(BaseModel):
     category: str | None
     difficulty: str
     knowledgePoints: List[dict]
+    correctAnswer: str | None  # Made optional to handle legacy data
+    passValidation: bool | None  # Made optional to handle legacy data
     createdAt: str
     updatedAt: str
     isActive: bool
@@ -74,4 +76,7 @@ async def get_questions():
             }
             for p in question["knowledgePoints"]
         ]
+        # Provide default values for optional fields if missing
+        question["correctAnswer"] = question.get("correctAnswer", None)
+        question["passValidation"] = question.get("passValidation", False)
     return questions

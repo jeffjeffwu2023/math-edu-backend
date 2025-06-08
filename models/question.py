@@ -10,4 +10,6 @@ class Question(BaseModel):
     difficulty: str = "easy"
     category: Optional[str] = None
     knowledgePoints: List[str] = []  # List of knowledge point UUID strings
-    createdAt: datetime = datetime.utcnow()
+    correctAnswer: Optional[str] = None  # Added field for correct answer
+    passValidation: bool = False  # Added field for validation status
+    createdAt: datetime = datetime.utcnow()    
