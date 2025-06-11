@@ -17,7 +17,7 @@ load_dotenv()
 client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
 db = client["math_edu_db"]
 
-router = APIRouter(prefix="/api/ai", tags=["ai"])
+router = APIRouter(prefix="/api/ai_mistral", tags=["ai_mistral"])
 
 class PromptRequest(BaseModel):
     prompt: str

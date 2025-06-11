@@ -62,9 +62,9 @@ async def get_answers(student_id: str, current_user: dict = Depends(get_current_
             "studentId": answer["studentId"],
             "questionId": answer["questionId"],
             "answer": answer["answer"],
-            "category": answer["category"],
-            "difficulty": answer["difficulty"],
-            "isCorrect": answer["isCorrect"],
+            "category": answer["category"]  if "category" in answer else "",
+            "difficulty": answer["difficulty"] if "difficulty" in answer else "",
+            "isCorrect": answer["isCorrect"] ,
             "createdAt": answer["createdAt"]
         }
         for answer in answers
