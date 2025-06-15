@@ -7,11 +7,11 @@ def parse_mixed_content_with_original(content):
     Args:
         content (str): The input string containing mixed text and LaTeX.
     Returns:
-        list: Array of objects with {value: string, type: "text" | "latex", original_latex: string | None}.
+        list: Array of objects with {value: string, type: "text" | "latex", original_latex: string | null}.
               - 'value' is the processed content (for $...$ with math expressions, delimiters removed; 
                 for \\(...\\) and \\begin{...}, full original; others as text).
               - 'type' is "text" or "latex".
-              - 'original_latex' is the original LaTeX string (including delimiters) for latex type, None for text.
+              - 'original_latex' is the original LaTeX string (including delimiters) for latex type, null for text.
     """
     if not content or not isinstance(content, str):
         return [{"value": "", "type": "text", "original_latex": None}]
@@ -21,7 +21,7 @@ def parse_mixed_content_with_original(content):
     i = 0
     
     while i < len(content):
-        # Check for $...$ (inline math, if it contains a valid math expression)
+        # Check for $...$ (inline math, only if it contains a math expression)
         if content[i] == '$' and i + 1 < len(content) and content[i + 1] != '$':
             if current_pos < i:
                 result.append({"value": content[current_pos:i].strip(), "type": "text", "original_latex": None})
@@ -32,17 +32,16 @@ def parse_mixed_content_with_original(content):
             if i < len(content) and content[i] == '$' and (i == len(content) - 1 or content[i + 1] != '$'):
                 original_latex = content[start:i + 1].strip()
                 inner_content = original_latex[1:-1].strip()
-                # Parse as LaTeX if it contains a variable, fraction, or integral, allowing numbers in math context
-                if re.search(r'[a-zA-Z]|\\frac|\\int', inner_content) and not re.match(r'^\d+$', inner_content):
+                # Only parse as LaTeX if it contains a variable or operator, not just a number
+                if re.search(r'[a-zA-Z][^a-zA-Z]*[+\-*/=]|[\\][a-z]+', inner_content) and not re.match(r'^\d+$', inner_content):
                     latex_content = inner_content
                     print(f"Debug: $...$ - original_latex='{original_latex}', latex_content='{latex_content}' (parsed as math)")
                     result.append({"value": latex_content, "type": "latex", "original_latex": original_latex})
-                    current_pos = i + 1
                 else:
                     print(f"Debug: $...$ - original_latex='{original_latex}' skipped (treated as text)")
-                    # Include the skipped $...$ in the text segment
-                    current_pos = i + 1
-                i += 1
+                    result.append({"value": original_latex, "type": "text", "original_latex": None})
+                current_pos = i + 1
+            i += 1
         # Check for $$...$$ (display math)
         elif content[i:i+2] == '$$':
             if current_pos < i:

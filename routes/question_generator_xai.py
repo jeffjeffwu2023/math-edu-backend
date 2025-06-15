@@ -62,6 +62,7 @@ async def generate_question_xai(request, current_user):
 
         logger.info(f"xAI API response: {response.json()}")
         raw_content = response.json()["choices"][0]["message"]["content"]
+        logger.info(f"Raw content from xAI: {raw_content}")
 
         # Parse the inner JSON to extract question and correctAnswer
         try:
@@ -102,7 +103,6 @@ async def generate_question_xai(request, current_user):
         response_dict = {
             "question": question_text,  # Only the question text
             "correctAnswer": correct_answer,  # Extracted separately
-            "htmlContent": question_text,  # Only the question text for frontend rendering
             "difficulty": request.difficulty,
             "topic": selected_topic,
             "passValidation": False,  # Validation moved to frontend
@@ -118,3 +118,19 @@ async def generate_question_xai(request, current_user):
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error generating question: {str(e)}")
+    
+
+"""
+
+import json
+# Read text file
+cnt =0
+data=""
+with open('routes/request.txt', 'r') as file:
+    data = file.read() 
+    #print(data)
+    cnt += 1
+print(cnt)
+json_data = json.loads(data)
+print(json_data)
+"""
