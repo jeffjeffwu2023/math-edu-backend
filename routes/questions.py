@@ -1,12 +1,11 @@
 # routes/questions.py
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from dotenv import load_dotenv
-from typing import List
+from typing import List, Optional
 from datetime import datetime
-from models.question import Question
 import uuid
 
 load_dotenv()
@@ -15,15 +14,51 @@ db = client["math_edu_db"]
 
 router = APIRouter(prefix="/api/questions", tags=["questions"])
 
+# Define segment model
+class Segment(BaseModel):
+    value: str
+    type: str = Field(..., pattern="^(text|latex)$")  # Use pattern instead of regex
+    original_latex: Optional[str] = None
+
+# Updated Question model
+class Question(BaseModel):
+    title: str
+    question: List[Segment]  # Array of segments
+    category: Optional[str] = None
+    difficulty: str
+    knowledgePoints: List[str] = []  # List of knowledge point IDs
+    correctAnswer: List[Segment] = []  # Array of answer segments
+    passValidation: Optional[bool] = False
+    createdAt: Optional[str] = None
+    updatedAt: Optional[str] = None
+    isActive: bool = True
+    id: Optional[str] = None
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "title": "Sample Question",
+                "question": [
+                    {"value": "Solve the equation ", "type": "text", "original_latex": None},
+                    {"value": "x + 2 = 5", "type": "latex", "original_latex": "$x + 2 = 5$"}
+                ],
+                "category": "algebra",
+                "difficulty": "easy",
+                "knowledgePoints": ["kp1", "kp2"],
+                "correctAnswer": [{"value": "x=3", "type": "latex", "original_latex": "$x=3$"}],
+                "passValidation": False
+            }
+        }
+
 class QuestionResponse(BaseModel):
     id: str
     title: str
-    content: str
-    category: str | None
+    question: List[Segment]  # Array of segments
+    category: Optional[str] = None
     difficulty: str
-    knowledgePoints: List[dict]
-    correctAnswer: str | None  # Made optional to handle legacy data
-    passValidation: bool | None  # Made optional to handle legacy data
+    knowledgePoints: List[dict]  # Expanded knowledge points
+    correctAnswer: List[Segment]  # Array of answer segments
+    passValidation: Optional[bool] = False
     createdAt: str
     updatedAt: str
     isActive: bool
@@ -77,6 +112,53 @@ async def get_questions():
             for p in question["knowledgePoints"]
         ]
         # Provide default values for optional fields if missing
-        question["correctAnswer"] = question.get("correctAnswer", None)
+        question["correctAnswer"] = question.get("correctAnswer", [])
         question["passValidation"] = question.get("passValidation", False)
+        # Ensure question is a list of segments if it was stored as a string
+        if isinstance(question.get("question"), str):
+            from latex_parser import parse_mixed_content_with_original
+            question["question"] = parse_mixed_content_with_original(question["question"])
+        # Ensure correctAnswer is a list of segments if it was stored as a string
+        if isinstance(question.get("correctAnswer"), str):
+            question["correctAnswer"] = [
+                {"value": seg.strip(), "type": "latex", "original_latex": seg.strip()}
+                for seg in question["correctAnswer"].split(",")
+            ]
     return questions
+
+@router.get("/{id}/", response_model=QuestionResponse)
+async def get_question_by_id(id: str):
+    try:
+        question = await db.questions.find_one({"id": id, "isActive": True})
+        if not question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        question["knowledgePoints"] = await db.knowledge_points.find(
+            {"id": {"$in": question["knowledgePoints"]}, "isActive": True}
+        ).to_list(None)
+        question["knowledgePoints"] = [
+            {
+                "id": p["id"],
+                "grade": p["grade"],
+                "strand": p["strand"],
+                "topic": p["topic"],
+                "skill": p["skill"],
+                "subKnowledgePoint": p["subKnowledgePoint"]
+            }
+            for p in question["knowledgePoints"]
+        ]
+        # Provide default values for optional fields if missing
+        question["correctAnswer"] = question.get("correctAnswer", [])
+        question["passValidation"] = question.get("passValidation", False)
+        # Ensure question is a list of segments if it was stored as a string
+        if isinstance(question.get("question"), str):
+            from latex_parser import parse_mixed_content_with_original
+            question["question"] = parse_mixed_content_with_original(question["question"])
+        # Ensure correctAnswer is a list of segments if it was stored as a string
+        if isinstance(question.get("correctAnswer"), str):
+            question["correctAnswer"] = [
+                {"value": seg.strip(), "type": "latex", "original_latex": seg.strip()}
+                for seg in question["correctAnswer"].split(",")
+            ]
+        return question
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching question: {str(e)}")

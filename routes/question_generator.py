@@ -1,3 +1,4 @@
+# routes/question_generator.py
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from routes.auth import get_current_user
