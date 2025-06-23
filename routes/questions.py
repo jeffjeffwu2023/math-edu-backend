@@ -8,6 +8,13 @@ from typing import List, Optional
 from datetime import datetime
 import uuid
 
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
 load_dotenv()
 client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
 db = client["math_edu_db"]
@@ -17,16 +24,16 @@ router = APIRouter(prefix="/api/questions", tags=["questions"])
 # Define segment model
 class Segment(BaseModel):
     value: str
-    type: str = Field(..., pattern="^(text|latex)$")  # Use pattern instead of regex
+    type: str = Field(..., pattern="^(text|latex|newline)$")  # Updated to include "newline"
     original_latex: Optional[str] = None
 
 # Updated Question model
 class Question(BaseModel):
     title: str
-    question: List[Segment]  # Array of segments
+    content: str
     category: Optional[str] = None
     difficulty: str
-    knowledgePoints: List[str] = []  # List of knowledge point IDs
+    knowledgePointIds: List[str] = []  # List of knowledge point IDs
     correctAnswer: List[Segment] = []  # Array of answer segments
     passValidation: Optional[bool] = False
     createdAt: Optional[str] = None
@@ -40,11 +47,12 @@ class Question(BaseModel):
                 "title": "Sample Question",
                 "question": [
                     {"value": "Solve the equation ", "type": "text", "original_latex": None},
-                    {"value": "x + 2 = 5", "type": "latex", "original_latex": "$x + 2 = 5$"}
+                    {"value": "x + 2 = 5", "type": "latex", "original_latex": "$x + 2 = 5$"},
+                    {"value": "", "type": "newline", "original_latex": None}
                 ],
                 "category": "algebra",
                 "difficulty": "easy",
-                "knowledgePoints": ["kp1", "kp2"],
+                "knowledgePointIds": ["kp1", "kp2"],
                 "correctAnswer": [{"value": "x=3", "type": "latex", "original_latex": "$x=3$"}],
                 "passValidation": False
             }
@@ -53,7 +61,7 @@ class Question(BaseModel):
 class QuestionResponse(BaseModel):
     id: str
     title: str
-    question: List[Segment]  # Array of segments
+    #content: List[Segment] = None  # Array of segments
     category: Optional[str] = None
     difficulty: str
     knowledgePoints: List[dict]  # Expanded knowledge points
@@ -63,18 +71,29 @@ class QuestionResponse(BaseModel):
     updatedAt: str
     isActive: bool
 
+
 @router.post("/", response_model=QuestionResponse)
 async def add_question(question: Question):
+    # Temporarily disable validation for empty question list
+    # if not question.question or not any(seg.value.strip() for seg in question.question):
+    #     raise HTTPException(status_code=422, detail="Question must contain at least one non-empty segment")
+
+    logger.info(f"question:{question}")
+
     # Validate knowledge point IDs
     valid_points = await db.knowledge_points.find(
-        {"id": {"$in": question.knowledgePoints}, "isActive": True}
+        {"id": {"$in": question.knowledgePointIds}, "isActive": True}
     ).to_list(None)
-    if len(valid_points) != len(question.knowledgePoints):
+    if len(valid_points) != len(question.knowledgePointIds):
         raise HTTPException(400, "Some knowledge point IDs are invalid or inactive")
 
+    # log valid_points content
+    logger.info(f"Valid knowledge points: {valid_points}")
+
     question_dict = question.dict(exclude={"id"})
+    question_dict["content"] = question.content
     question_dict["id"] = str(uuid.uuid4())
-    question_dict["knowledgePoints"] = question.knowledgePoints  # Store UUIDs
+    #question_dict["knowledgePointIds"] = question.knowledgePointIds  # Store UUIDs
     question_dict["createdAt"] = datetime.utcnow().isoformat()
     question_dict["updatedAt"] = datetime.utcnow().isoformat()
     question_dict["isActive"] = True
@@ -97,8 +116,8 @@ async def add_question(question: Question):
 async def get_questions():
     questions = await db.questions.find({"isActive": True}).to_list(None)
     for question in questions:
-        question["knowledgePoints"] = await db.knowledge_points.find(
-            {"id": {"$in": question["knowledgePoints"]}, "isActive": True}
+        question["knowledgePointIds"] = await db.knowledge_points.find(
+            {"id": {"$in": question["knowledgePointIds"]}, "isActive": True}
         ).to_list(None)
         question["knowledgePoints"] = [
             {
@@ -109,7 +128,7 @@ async def get_questions():
                 "skill": p["skill"],
                 "subKnowledgePoint": p["subKnowledgePoint"]
             }
-            for p in question["knowledgePoints"]
+            for p in question["knowledgePointIds"]
         ]
         # Provide default values for optional fields if missing
         question["correctAnswer"] = question.get("correctAnswer", [])

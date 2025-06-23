@@ -3,6 +3,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from routes.auth import get_current_user
 import logging
+from routes.grok_math_handler import process_math_question
+import base64
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,11 +18,10 @@ class GenerateQuestionRequest(BaseModel):
     save_to_db: bool = False  # Option to save to MongoDB
     ai_provider: str = None  # New field to switch between providers, default to grok
 
-@router.post("/", response_model=dict)
+@router.post("/", response_model=dict)  # Matches the dictionary structure
 async def generate_question(request: GenerateQuestionRequest, current_user: dict = Depends(get_current_user)):
     if request.ai_provider == "grok":
-        from routes.question_generator_xai import generate_question_xai
-        return await generate_question_xai(request, current_user)
+        return await process_math_question(request)  # Await the coroutine
     elif request.ai_provider == "openai":
         from routes.question_generator_openai import generate_question_openai
         return await generate_question_openai(request, current_user)
