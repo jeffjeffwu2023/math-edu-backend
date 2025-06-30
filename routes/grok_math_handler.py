@@ -21,17 +21,23 @@ async def call_grok_api(prompt):
         data = response.json()
         return data["choices"][0]["message"]["content"]
 
-def double_newline_to_paragraph(result):
+def merge_consecutive_newlines(result):
+    """
+    Converts consecutive 'newline' elements in the 'question' or 'correctAnswer' arrays
+    into a single 'newline' element to represent paragraph breaks.
+    """
     for key in ["question", "correctAnswer"]:
         if key in result and isinstance(result[key], list):
             new_items = []
             prev_newline = False
             for item in result[key]:
                 if item["type"] == "newline":
-                    new_items.append(item)
-                    new_items.append(item)
+                    if not prev_newline:
+                        new_items.append(item)
+                    prev_newline = True
                 else:
                     new_items.append(item)
+                    prev_newline = False
             result[key] = new_items
     return result
 
@@ -85,6 +91,8 @@ async def process_math_question(request: BaseModel):
     if "correctAnswer" in result and len(result["correctAnswer"]) > 1:
         logger.warning(f"Multiple segments in correctAnswer, keeping only the last one: {result['correctAnswer']}")
         result["correctAnswer"] = [result["correctAnswer"][-1]]  # Keep only the last segment
+    
+    result = merge_consecutive_newlines(result)  # Convert consecutive newlines to paragraphs
     logger.info(f"Processed result: {result}")
     return result
 
