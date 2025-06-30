@@ -21,6 +21,20 @@ async def call_grok_api(prompt):
         data = response.json()
         return data["choices"][0]["message"]["content"]
 
+def double_newline_to_paragraph(result):
+    for key in ["question", "correctAnswer"]:
+        if key in result and isinstance(result[key], list):
+            new_items = []
+            prev_newline = False
+            for item in result[key]:
+                if item["type"] == "newline":
+                    new_items.append(item)
+                    new_items.append(item)
+                else:
+                    new_items.append(item)
+            result[key] = new_items
+    return result
+
 async def process_math_question(request: BaseModel):
     # Precompute the base64 example with escaped backslashes
     base64_example = base64.b64encode(b'\\int_0^1 x \\, dx').decode()
@@ -39,6 +53,17 @@ async def process_math_question(request: BaseModel):
     logger.info(f"Using prompt: {prompt}")
     response = await call_grok_api(prompt)
     result = json.loads(response)
+    # For every single 'newline', convert to two consecutive 'newline' elements
+    for key in ["question", "correctAnswer"]:
+        if key in result and isinstance(result[key], list):
+            new_items = []
+            for item in result[key]:
+                if item["type"] == "newline":
+                    new_items.append(item)
+                    new_items.append({"type": "newline", "value": ""})
+                else:
+                    new_items.append(item)
+            result[key] = new_items
     logger.info(f"Raw response: {result}")
     # Process each array within the dictionary
     for key in ["question", "correctAnswer"]:
