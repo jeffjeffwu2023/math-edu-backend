@@ -31,6 +31,7 @@ class Segment(BaseModel):
 class Question(BaseModel):
     title: str
     content: str
+    question: List[Segment] = []  # Array of segments
     category: Optional[str] = None
     difficulty: str
     knowledgePointIds: List[str] = []  # List of knowledge point IDs
@@ -97,6 +98,21 @@ async def add_question(question: Question):
     question_dict["createdAt"] = datetime.utcnow().isoformat()
     question_dict["updatedAt"] = datetime.utcnow().isoformat()
     question_dict["isActive"] = True
+
+    # log question.question content
+    logger.info(f"Question content: {question.question}")   
+    logger.info(f"question_dict question: {question_dict["question"]}")   
+    
+    # if question_dict["question"] is not None and first segment is a newline, remove it
+    if question_dict["question"] and question_dict["question"][0].get("type") == "newline":
+        question_dict["question"] = question_dict["question"][1:]
+
+    
+    # if question.question is not empty and first segment is a newline, remove it
+    #if question.question and question.question[0].type == "newline":
+    #    question_dict["question"] = question.question[1:]
+    #else:
+    #    question_dict["question"] = question.question   
 
     await db.questions.insert_one(question_dict)
     question_dict["knowledgePoints"] = [
