@@ -91,7 +91,7 @@ async def call_grok(request: PromptRequest):
 @router.post("/analyze-student/")
 async def analyze_student(student_data: dict, target_audience: str = "student", language: str = "en"):
     student_id = student_data["studentId"]
-    language = "zh-CN"
+    #language = "zh-CN"
     language_instruction = "Please respond in Chinese (Simplified)." if language == "zh-CN" else "Please respond in English."
     if target_audience == "parent":
         prompt = f"Generate a performance analysis for the parents of this student based on their answer history, category breakdown, difficulty breakdown, and time spent. Summarize their overall performance, highlight key strengths and areas for improvement in specific math categories and difficulty levels, and provide actionable advice for parents to support their child’s learning. Use a professional and supportive tone. {language_instruction}"

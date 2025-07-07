@@ -132,6 +132,7 @@ async def add_question(question: Question):
 async def get_questions():
     questions = await db.questions.find({"isActive": True}).to_list(None)
     for question in questions:
+        logger.info(f"Processing question: {question}")
         question["knowledgePointIds"] = await db.knowledge_points.find(
             {"id": {"$in": question["knowledgePointIds"]}, "isActive": True}
         ).to_list(None)
