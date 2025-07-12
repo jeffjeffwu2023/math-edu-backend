@@ -63,6 +63,7 @@ class QuestionResponse(BaseModel):
     id: str
     title: str
     #content: List[Segment] = None  # Array of segments
+    question: List[Segment] = []  # Array of segments
     category: Optional[str] = None
     difficulty: str
     knowledgePoints: List[dict]  # Expanded knowledge points
