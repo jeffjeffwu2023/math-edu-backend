@@ -52,6 +52,10 @@ class AssignStudent(BaseModel):
     parentId: str
     studentIds: List[str]
 
+class AssignTutorStudents(BaseModel):
+    tutorId: str
+    studentIds: List[str]
+
 VALID_ROLES = {"student", "parent", "tutor", "manager", "admin"}
 
 async def validate_user_ids(user_ids: List[str], role: str, field: str) -> None:
@@ -62,31 +66,47 @@ async def validate_user_ids(user_ids: List[str], role: str, field: str) -> None:
             raise HTTPException(status_code=400, detail=f"{role.capitalize()} not found for {field}: {user_id}")
 
 @router.get("/")
-async def get_users(role: str = None, include_disabled: bool = False, current_user: dict = Depends(get_current_user)):
-    logger.info(f"Fetching users with role={role}, include_disabled={include_disabled}, current_user={current_user['id']}")
+async def get_users(
+    role: str = None, 
+    include_disabled: bool = False, 
+    search: str = None, 
+    page: int = 1, 
+    limit: int = 10,
+    current_user: dict = Depends(get_current_user)
+):
+    logger.info(f"Fetching users with role={role}, search={search}, page={page}, limit={limit}, current_user={current_user['id']}")
     if role and role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of {', '.join(VALID_ROLES)}")
     
     query = {"role": role} if role else {}
     if not include_disabled:
         query["disabled"] = False
+    if search:
+        query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"email": {"$regex": search, "$options": "i"}}
+        ]
     
-    users = await db.users.find(query).to_list(None)
-    return [
-        {
-            "id": user["id"],
-            "name": user["name"],
-            "email": user["email"],
-            "role": user["role"],
-            "language": user["language"],
-            "tutorId": user.get("tutorId"),
-            "studentIds": user.get("studentIds", []),
-            "parentIds": user.get("parentIds", []),
-            "classroomIds": user.get("classroomIds", []),
-            "disabled": user.get("disabled", False)
-        }
-        for user in users
-    ]
+    total = await db.users.count_documents(query)
+    users = await db.users.find(query).skip((page - 1) * limit).limit(limit).to_list(None)
+    return {
+        "users": [
+            {
+                "id": user["id"],
+                "name": user["name"],
+                "email": user["email"],
+                "role": user["role"],
+                "language": user["language"],
+                "tutorId": user.get("tutorId"),
+                "studentIds": user.get("studentIds", []),
+                "parentIds": user.get("parentIds", []),
+                "classroomIds": user.get("classroomIds", []),
+                "disabled": user.get("disabled", False)
+            }
+            for user in users
+        ],
+        "total": total
+    }
 
 @router.get("/bytutor/{tutor_id}")
 async def get_users_by_tutor(tutor_id: str, current_user: dict = Depends(get_current_user)):
@@ -146,7 +166,6 @@ async def add_user(user: UserCreate, current_user: dict = Depends(get_current_us
     if user.role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of {', '.join(VALID_ROLES)}")
     
-    # Validate tutorId and parentIds/studentIds
     if user.role == "student" and user.tutorId:
         tutor = await db.users.find_one({"id": user.tutorId, "role": "tutor", "disabled": False})
         if not tutor:
@@ -163,7 +182,6 @@ async def add_user(user: UserCreate, current_user: dict = Depends(get_current_us
         user_dict["performanceData"] = {"totalCorrect": 0, "totalAttempts": 0, "avgTimeTaken": 0.0}
         await db.users.insert_one(user_dict)
         
-        # Update bidirectional relationships
         if user.role == "student" and user.tutorId:
             await db.users.update_one(
                 {"id": user.tutorId},
@@ -206,7 +224,6 @@ async def update_user(user_id: str, update_data: UserUpdate, current_user: dict 
     if update_data.role and update_data.role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of {', '.join(VALID_ROLES)}")
     
-    # Validate tutorId and parentIds/studentIds
     if update_data.role == "student" and update_data.tutorId:
         tutor = await db.users.find_one({"id": update_data.tutorId, "role": "tutor", "disabled": False})
         if not tutor:
@@ -216,7 +233,6 @@ async def update_user(user_id: str, update_data: UserUpdate, current_user: dict 
     if update_data.role == "parent" and update_data.studentIds:
         await validate_user_ids(update_data.studentIds, "student", "studentIds")
     
-    # Fetch existing user to maintain required fields
     existing_user = await db.users.find_one({"id": user_id, "disabled": False})
     if not existing_user:
         raise HTTPException(status_code=404, detail="User not found or disabled")
@@ -233,7 +249,6 @@ async def update_user(user_id: str, update_data: UserUpdate, current_user: dict 
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="User not found or no changes made")
     
-    # Update bidirectional relationships
     if update_data.role == "student" and "parentIds" in update_dict:
         current_parent_ids = existing_user.get("parentIds", [])
         new_parent_ids = update_dict.get("parentIds", [])
@@ -271,20 +286,17 @@ async def assign_parent(assignment: AssignParent, current_user: dict = Depends(g
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only admins can assign parents")
     
-    # Validate student and parent IDs
     student = await db.users.find_one({"id": assignment.studentId, "role": "student", "disabled": False})
     if not student:
         raise HTTPException(status_code=404, detail=f"Student not found: {assignment.studentId}")
     
     await validate_user_ids(assignment.parentIds, "parent", "parentIds")
     
-    # Update student's parentIds
     await db.users.update_one(
         {"id": assignment.studentId},
         {"$set": {"parentIds": assignment.parentIds}}
     )
     
-    # Update parents' studentIds (bidirectional)
     current_parent_ids = student.get("parentIds", [])
     new_parent_ids = assignment.parentIds
     removed_parent_ids = [pid for pid in current_parent_ids if pid not in new_parent_ids]
@@ -309,20 +321,17 @@ async def assign_student(assignment: AssignStudent, current_user: dict = Depends
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only admins can assign students")
     
-    # Validate parent and student IDs
     parent = await db.users.find_one({"id": assignment.parentId, "role": "parent", "disabled": False})
     if not parent:
         raise HTTPException(status_code=404, detail=f"Parent not found: {assignment.parentId}")
     
     await validate_user_ids(assignment.studentIds, "student", "studentIds")
     
-    # Update parent's studentIds
     await db.users.update_one(
         {"id": assignment.parentId},
         {"$set": {"studentIds": assignment.studentIds}}
     )
     
-    # Update students' parentIds (bidirectional)
     current_student_ids = parent.get("studentIds", [])
     new_student_ids = assignment.studentIds
     removed_student_ids = [sid for sid in current_student_ids if sid not in new_student_ids]
@@ -341,18 +350,51 @@ async def assign_student(assignment: AssignStudent, current_user: dict = Depends
     
     return {"message": "Student assigned successfully"}
 
+@router.post("/assign-tutor-students")
+async def assign_tutor_students(assignment: AssignTutorStudents, current_user: dict = Depends(get_current_user)):
+    logger.info(f"Assigning students to tutor {assignment.tutorId}: {assignment.studentIds}, current_user: {current_user['id']}")
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can assign students")
+    
+    tutor = await db.users.find_one({"id": assignment.tutorId, "role": "tutor", "disabled": False})
+    if not tutor:
+        raise HTTPException(status_code=404, detail=f"Tutor not found: {assignment.tutorId}")
+    
+    await validate_user_ids(assignment.studentIds, "student", "studentIds")
+    
+    await db.users.update_one(
+        {"id": assignment.tutorId},
+        {"$set": {"studentIds": assignment.studentIds}}
+    )
+    
+    current_student_ids = tutor.get("studentIds", [])
+    new_student_ids = assignment.studentIds
+    removed_student_ids = [sid for sid in current_student_ids if sid not in new_student_ids]
+    
+    for student_id in removed_student_ids:
+        await db.users.update_one(
+            {"id": student_id},
+            {"$set": {"tutorId": null}}
+        )
+    
+    for student_id in new_student_ids:
+        await db.users.update_one(
+            {"id": student_id},
+            {"$set": {"tutorId": assignment.tutorId}}
+        )
+    
+    return {"message": "Students assigned successfully"}
+
 @router.delete("/{user_id}")
 async def soft_delete_user(user_id: str, current_user: dict = Depends(get_current_user)):
     logger.info(f"Soft deleting user {user_id}, current_user: {current_user['id']}")
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only admins can delete users")
     
-    # Fetch user to update bidirectional relationships
     user = await db.users.find_one({"id": user_id, "disabled": False})
     if not user:
         raise HTTPException(status_code=404, detail="User not found or already disabled")
     
-    # Remove user from tutors, parents, or students
     if user["role"] == "student" and user.get("tutorId"):
         await db.users.update_one(
             {"id": user["tutorId"]},
